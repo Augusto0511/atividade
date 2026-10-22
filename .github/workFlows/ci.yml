@@ -1,0 +1,44 @@
+name: Ping Google and Push
+
+on:
+  push:
+    branches:
+     - main
+  workflow_dispatch:
+    # Permite que você execute o script manualmente pelo painel do GitHub
+
+jobs:
+  ping-job:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Dá permissão para o token do GitHub gravar alterações no repositório
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Ping Google and Generate Log
+      run: |
+        echo "=== Executando Ping ==="
+        # Realiza 4 pings no Google e salva o resultado em um arquivo de log
+        ping -c 4 google.com > ping_log.txt
+        echo "Última atualização: $(date)" >> ping_log.txt
+
+    - name: Commit and Push changes
+      run: |
+        # Configura a identidade do Git usando o bot padrão do GitHub
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@://github.com"
+        
+        # Adiciona o arquivo modificado/criado
+        git add ping_log.txt
+        
+        # Verifica se há alterações antes de fazer o commit (evita erros se o log for idêntico)
+        if ! git diff-index --quiet HEAD; then
+          git commit -m "Automated: Ping Google log update $(date +'%Y-%m-%d %H:%M:%S')"
+          git push origin main
+        else
+          echo "Nenhuma alteração detectada no log."
+        fi
