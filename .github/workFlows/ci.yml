@@ -1,18 +1,15 @@
-name: Ping Google and Push
+name: Ping Google
 
 on:
   push:
     branches:
      - main
-  workflow_dispatch: # Permite rodar manualmente pelo painel
+  workflow_dispatch:
 
 jobs:
+  # JOB 1: Realiza o ping inicial
   ping-job:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write # Permissão necessária para fazer o push
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -21,20 +18,61 @@ jobs:
       run: |
         echo "=== Executando Ping ==="
         ping -c 4 google.com > ping_log.txt
-        echo "Última atualização: $(date)" >> ping_log.txt
+        echo "Última atualização do Ping: $(date)" >> ping_log.txt
+
+    - name: Salvar log do Ping
+      uses: actions/upload-artifact@v4
+      with:
+        name: ping-result
+        path: ping_log.txt
+
+  # JOB 2: NOVO! Executa a resolução DNS (Depende do JOB 1)
+  dns-lookup-job:
+    runs-on: ubuntu-latest
+    needs: ping-job # ⬅️ Só inicia se o 'ping-job' der sucesso
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: DNS Lookup Test
+      run: |
+        echo "=== Executando DNS Lookup ==="
+        nslookup google.com > dns_log.txt
+        echo "Última atualização do DNS: $(date)" >> dns_log.txt
+
+    - name: Salvar log do DNS
+      uses: actions/upload-artifact@v4
+      with:
+        name: dns-result
+        path: dns_log.txt
+
+  # JOB 3: Envia todas as alterações para a main (Depende do JOB 2)
+  commit-and-push:
+    runs-on: ubuntu-latest
+    needs: dns-lookup-job # ⬅️ Só inicia se o 'dns-lookup-job' der sucesso
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Baixar todos os logs gerados nos jobs anteriores
+      uses: actions/download-artifact@v4
+      with:
+        merge-multiple: true # Junta os arquivos baixados na mesma pasta
 
     - name: Commit and Push changes
       run: |
-        # 1. Correção do e-mail oficial do bot do GitHub
         git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.email "41898282+github-actions[bot]@://github.com"
         
-        git add ping_log.txt
+        # Adiciona os dois logs criados no Git
+        git add ping_log.txt dns_log.txt
         
         if ! git diff-index --quiet HEAD; then
-          # 2. Adicionado [skip ci] para que o push do bot NÃO ative o workflow de novo
-          git commit -m "Automated: Ping Google log update $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+          # O [skip ci] previne loops infinitos ao fazer o push na branch main
+          git commit -m "Automated: Network reports update $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
           git push origin main
         else
-          echo "Nenhuma alteração detectada no log."
+          echo "Nenhuma alteração detectada nos logs."
         fi
